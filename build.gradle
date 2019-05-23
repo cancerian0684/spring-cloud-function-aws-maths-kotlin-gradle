@@ -76,12 +76,12 @@ assemble.dependsOn shadowJar
 
 task deployFunction(type: AWSLambdaMigrateFunctionTask, dependsOn: [assemble, test]) {
 //    functionName = project.name
-    functionName = "aws-lambda-number-reverse"
+    functionName = "aws-lambda-kotlin-number-reverse"
     runtime = com.amazonaws.services.lambda.model.Runtime.Java8
     role = "arn:aws:iam::${aws.accountId}:role/lambdaDemoRole"
 
     zipFile = shadowJar.archivePath
-    handler = "com.shunya.reverse.handler.aws.ReverseFunctionHandler"
+    handler = "com.shunya.reverse.Handler"
     memorySize = 512
     timeout = 60
     environment = [
@@ -92,7 +92,7 @@ task deployFunction(type: AWSLambdaMigrateFunctionTask, dependsOn: [assemble, te
 
 task invokeFunction(type: AWSLambdaInvokeTask) {
 //    functionName = project.name
-    functionName = "aws-lambda-number-reverse"
+    functionName = "aws-lambda-kotlin-number-reverse"
     invocationType = InvocationType.RequestResponse
     payload = file("src/test/resources/sample_request.json")
     doLast {
