@@ -4,64 +4,79 @@ import jp.classmethod.aws.gradle.lambda.AWSLambdaMigrateFunctionTask
 
 buildscript {
     ext {
-        kotlinVersion = '1.3.31'
-    }
-    repositories {
-        mavenCentral()
-        jcenter()
-        maven {
-            url "https://plugins.gradle.org/m2/"
-        }
-    }
-    dependencies {
-        classpath 'org.springframework.boot:spring-boot-gradle-plugin:2.1.5.RELEASE'
-        classpath "com.github.jengelman.gradle.plugins:shadow:5.0.0"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
-        classpath "org.jetbrains.kotlin:kotlin-allopen:$kotlinVersion"
-        classpath "jp.classmethod.aws:gradle-aws-plugin:0.37"
+        kotlin_version = '1.6.20'
     }
 }
 
+plugins {
+    id 'org.springframework.boot' version '2.6.7'
+    id 'org.springframework.boot.experimental.thin-launcher' version '1.0.27.RELEASE'
+    id 'io.spring.dependency-management' version '1.0.11.RELEASE'
+    id 'java'
+    id 'groovy'
+    id "com.github.johnrengelman.shadow" version "6.1.0"
+    id 'jp.classmethod.aws' version '0.41'
+    id 'jp.classmethod.aws.lambda' version '0.41'
+    id 'org.jetbrains.kotlin.jvm' version "$kotlin_version"
+    id 'org.jetbrains.kotlin.plugin.spring' version "$kotlin_version"
+    id "org.jetbrains.kotlin.plugin.allopen" version "$kotlin_version"
+    id "org.jetbrains.kotlin.plugin.noarg" version "$kotlin_version"
+    id "org.jetbrains.kotlin.plugin.jpa" version "$kotlin_version"
+    id "org.jetbrains.kotlin.kapt" version "$kotlin_version"
+}
+
+ext {
+    springCloudFunctionVersion = '3.2.3'
+}
+
 version '1.0-SNAPSHOT'
-
-apply plugin: 'com.github.johnrengelman.shadow'
-apply plugin: 'groovy'
-apply plugin: 'jp.classmethod.aws'
-apply plugin: 'jp.classmethod.aws.lambda'
-apply plugin: 'kotlin'
-apply plugin: 'kotlin-spring'
-
-apply plugin: 'org.springframework.boot'
-apply plugin: 'io.spring.dependency-management'
+sourceCompatibility = '1.8'
 
 repositories {
     mavenCentral()
 }
 
 dependencies { 
-    compile 'com.amazonaws:aws-lambda-java-core:1.2.0'
-    compile 'com.amazonaws:aws-lambda-java-events:2.2.6'
-    compile 'com.amazonaws:aws-java-sdk-s3:1.11.557'
+    compileOnly 'com.amazonaws:aws-lambda-java-core:1.2.1'
+    compileOnly 'com.amazonaws:aws-lambda-java-events:3.11.0'
+    compileOnly 'com.amazonaws:aws-java-sdk-s3:1.12.32'
 
-    compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    compile "org.jetbrains.kotlin:kotlin-reflect"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+    implementation "org.jetbrains.kotlin:kotlin-reflect"
 
-//    compile 'org.springframework.cloud:spring-cloud-starter-function-web:2.1.0.RELEASE'
-    compile 'org.springframework.cloud:spring-cloud-function-adapter-aws:2.1.0.RELEASE'
+    implementation "org.springframework.cloud:spring-cloud-starter-function-web:${springCloudFunctionVersion}"
+    implementation "org.springframework.cloud:spring-cloud-function-adapter-aws:${springCloudFunctionVersion}"
 
-    testCompile 'org.springframework.boot:spring-boot-starter-test'
-    testCompile 'net.bytebuddy:byte-buddy:1.6.4'
-    testCompile 'org.objenesis:objenesis:1.2'
-    testCompile 'org.spockframework:spock-core:1.1-groovy-2.4'
-    testCompile 'org.spockframework:spock-spring:1.1-groovy-2.4'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'net.bytebuddy:byte-buddy:1.12.9'
+    testImplementation 'org.objenesis:objenesis:3.2'
+    testImplementation 'org.spockframework:spock-core:1.3-groovy-2.4'
+    testImplementation 'org.spockframework:spock-spring:1.3-groovy-2.4'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-function-dependencies:${springCloudFunctionVersion}"
+    }
 }
 
 compileKotlin {
     kotlinOptions.jvmTarget = "1.8"
 }
 
+assemble.dependsOn = [shadowJar, thinJar]
+
+jar {
+    manifest {
+        attributes 'Start-Class': 'com.shunya.reverse.LambdaApp'
+    }
+}
+
 shadowJar {
     classifier = 'aws'
+    dependencies {
+        exclude dependency("org.springframework.cloud:spring-cloud-function-web:${springCloudFunctionVersion}")
+    }
     mergeServiceFiles()
     append 'META-INF/spring.handlers'
     append 'META-INF/spring.schemas'
@@ -72,18 +87,21 @@ shadowJar {
     }
 }
 
-assemble.dependsOn shadowJar
+configurations {
+    testCompile.extendsFrom(compileOnly)
+}
 
 task deployFunction(type: AWSLambdaMigrateFunctionTask, dependsOn: [assemble, test]) {
 //    functionName = project.name
     functionName = "aws-lambda-kotlin-number-reverse"
+    alias = "aws-lambda-kotlin-number-reverse"
     runtime = com.amazonaws.services.lambda.model.Runtime.Java8
-    role = "arn:aws:iam::${aws.accountId}:role/lambdaDemoRole"
+    role = "arn:aws:iam::${aws.accountId}:role/test-spring-cloud-role-ir8g528h"
 
     zipFile = shadowJar.archivePath
-    handler = "com.shunya.reverse.Handler"
+    handler = "org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest"
     memorySize = 512
-    timeout = 60
+    timeout = 30
     environment = [
             SPRING_PROFILES_ACTIVE: "dev,aws",
             MAIN_CLASS: "com.shunya.reverse.LambdaApp"
